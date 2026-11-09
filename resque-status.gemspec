@@ -1,10 +1,13 @@
 # frozen_string_literal: true
 
-require_relative 'lib/resque/plugins/status/version'
+# Parse VERSION without loading lib (loading Status here would skip autoload of Hash).
+version = File.read(File.expand_path('lib/resque/plugins/status/version.rb', __dir__))[
+  /VERSION\s*=\s*['"]([\d.]+)['"]/, 1
+]
 
 Gem::Specification.new do |s|
   s.name          = 'resque-status'
-  s.version       = Resque::Plugins::Status::VERSION
+  s.version       = version
   s.authors       = ['Aaron Quint', 'Cartoway']
   s.email         = ['aaron@quirkey.com']
   s.homepage      = 'https://github.com/cartoway/resque-status'
