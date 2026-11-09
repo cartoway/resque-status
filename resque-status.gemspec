@@ -20,7 +20,7 @@ Gem::Specification.new do |s|
     `git ls-files -z`.split("\x0").reject { |f| f.start_with?('test/', '.git') }
   end
   s.require_paths = ['lib']
-  s.required_ruby_version = '>= 2.7'
+  s.required_ruby_version = '>= 3.1'
 
   # Upstream pinned ~> 1.19; allow Resque 2/3 (Sinatra still comes from Resque itself).
   s.add_runtime_dependency 'resque', '>= 1.19'
