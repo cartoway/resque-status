@@ -13,11 +13,73 @@ Upstream is unmaintained and pins `resque ~> 1.19`, which blocks Resque 2/3. Thi
 gem 'resque-status', github: 'cartoway/resque-status'
 ```
 
+Requires **Ruby >= 3.1**.
+
 ## Usage
 
-Unchanged from upstream — include `Resque::Plugins::Status`, use `.create`, `#at` / `#tick`, `Hash.get` / `Hash.kill`.
+```ruby
+class ExportJob
+  include Resque::Plugins::Status
 
-See the [original README](https://github.com/quirkey/resque-status/blob/master/README.rdoc) for full docs.
+  def perform
+    total = options['num'].to_i
+    total.times do |i|
+      # options keys are strings (Resque JSON round-trip)
+      at(i + 1, total, "Step #{i + 1}/#{total}")
+    end
+    completed('Done')
+  end
+end
+
+uuid = ExportJob.create('num' => 10)
+# or ExportJob.create(num: 10) — symbols become strings after enqueue
+
+status = Resque::Plugins::Status::Hash.get(uuid)
+status.pct_complete
+status.working?
+status.message
+```
+
+Progress / kill checks happen in `#at` / `#tick`. A job that never calls them cannot be killed mid-flight.
+
+### Kill
+
+```ruby
+Resque::Plugins::Status::Hash.kill(uuid)
+# next at/tick raises Resque::Plugins::Status::Killed and sets status to killed
+```
+
+### Expiration
+
+```ruby
+Resque::Plugins::Status::Hash.expire_in = 3600 # seconds
+```
+
+Status keys get a Redis TTL, and the `_statuses` index score is refreshed on each `#set` so long-running jobs are not pruned while still updating.
+
+### Options convention
+
+Always read **string keys** inside `#perform` (`options['num']`, not `options[:num]`). Resque encodes arguments as JSON.
+
+## resque-web Statuses tab
+
+Optional Sinatra extension (`lib/resque/status_server.rb`). Auto-registers when Resque’s web app loads it.
+
+**Status:** best-effort / legacy. Validated historically against Resque 1 + `resque-web`. Not a supported product surface for this fork — use `Hash.get` / your own UI in production. PRs welcome if you need it on Resque 2/3.
+
+## Development
+
+```bash
+# Redis for tests (default REDIS_URL=redis://127.0.0.1:9736/1)
+docker run -d --name resque-status-redis -p 9736:6379 redis:7-alpine
+
+bundle install
+bundle exec rake test
+
+# Matrix locally (Resque 1 CI pins redis ~> 4.8 — Resque 1.x + redis 5/6 break)
+rm -f Gemfile.lock
+RESQUE='~> 2.7' bundle install && bundle exec rake test
+```
 
 ## License
 

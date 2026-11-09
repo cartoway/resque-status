@@ -94,6 +94,17 @@ class TestResquePluginsStatusHash < Minitest::Test
         assert_nil Resque::Plugins::Status::Hash.get(uuid)
       end
 
+      it "refresh zset score on set so long-running jobs stay indexed" do
+        Resque::Plugins::Status::Hash.expire_in = 2
+        uuid = Resque::Plugins::Status::Hash.create(Resque::Plugins::Status::Hash.generate_uuid, "running")
+        sleep 1
+        Resque::Plugins::Status::Hash.set(uuid, "still running")
+        sleep 1
+        Resque::Plugins::Status::Hash.create(Resque::Plugins::Status::Hash.generate_uuid)
+        assert_includes Resque::Plugins::Status::Hash.status_ids, uuid
+        assert_equal "still running", Resque::Plugins::Status::Hash.get(uuid).message
+      end
+
       it "store the options for the job created" do
         uuid = Resque::Plugins::Status::Hash.create(Resque::Plugins::Status::Hash.generate_uuid, "new", :options => {'test' => '123'})
         assert uuid

@@ -57,7 +57,7 @@ class TestResquePluginsStatus < Minitest::Test
       end
 
       it "return nil" do
-        assert_equal nil, @res
+        assert_nil @res
       end
 
       it "not create a status" do

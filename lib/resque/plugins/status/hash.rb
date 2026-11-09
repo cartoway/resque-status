@@ -13,8 +13,8 @@ module Resque
         # Returns the UUID of the new status.
         def self.create(uuid, *messages)
           set(uuid, *messages)
-          redis.zadd(set_key, Time.now.to_i, uuid)
-          redis.zremrangebyscore(set_key, 0, Time.now.to_i - @expire_in) if @expire_in
+          # set() already refreshes the index when expire_in is set
+          redis.zadd(set_key, Time.now.to_f, uuid) unless expire_in
           uuid
         end
 
@@ -42,6 +42,10 @@ module Resque
           redis.set(status_key(uuid), encode(val))
           if expire_in
             redis.expire(status_key(uuid), expire_in)
+            # Refresh zset score so long-running jobs are not pruned mid-flight.
+            # Float scores keep same-second creates ordered (killall range tests, etc.).
+            redis.zadd(set_key, Time.now.to_f, uuid)
+            redis.zremrangebyscore(set_key, 0, Time.now.to_f - expire_in)
           end
           val
         end
@@ -115,13 +119,37 @@ module Resque
         # if it _should_ be killed by calling <tt>tick</tt> or <tt>at</tt>. If so, it raises
         # a <tt>Resque::Plugins::Status::Killed</tt> error and sets the status to 'killed'.
         def self.kill(uuid)
-          redis.sadd(kill_key, uuid)
+          redis_sadd(kill_key, uuid)
         end
 
         # Remove the job at UUID from the kill list
         def self.killed(uuid)
-          redis.srem(kill_key, uuid)
+          redis_srem(kill_key, uuid)
         end
+
+        # Talk to the raw Redis client when Resque wraps redis-namespace/DataStore,
+        # so redis-rb 4.8+ does not warn on boolean sadd/srem.
+        def self.redis_sadd(key, member)
+          client, full_key = raw_redis_key(key)
+          client.respond_to?(:sadd?) ? client.sadd?(full_key, member) : client.sadd(full_key, [member])
+        end
+        private_class_method :redis_sadd
+
+        def self.redis_srem(key, member)
+          client, full_key = raw_redis_key(key)
+          client.respond_to?(:srem?) ? client.srem?(full_key, member) : client.srem(full_key, [member])
+        end
+        private_class_method :redis_srem
+
+        def self.raw_redis_key(key)
+          conn = redis
+          if conn.respond_to?(:redis) && conn.respond_to?(:namespace) && conn.namespace
+            [conn.redis, "#{conn.namespace}:#{key}"]
+          else
+            [conn, key]
+          end
+        end
+        private_class_method :raw_redis_key
 
         # Return the UUIDs of the jobs on the kill list
         def self.kill_ids

@@ -1,44 +1,58 @@
+# frozen_string_literal: true
+
 require 'bundler/setup'
 require 'resque-status'
+require 'socket'
+require 'uri'
 
 require 'minitest/autorun'
-require 'mocha/setup'
+require 'mocha/minitest'
 
-#
-# make sure we can run redis
-#
+REDIS_URL = ENV.fetch('REDIS_URL', 'redis://127.0.0.1:9736/1')
+REDIS_PID = nil
 
-if !system("which redis-server")
-  puts '', "** can't find `redis-server` in your path"
-  puts "** try running `sudo rake install`"
-  abort ''
+def redis_up?
+  uri = URI.parse(REDIS_URL)
+  Socket.tcp(uri.host, uri.port || 6379, connect_timeout: 1, &:close)
+  true
+rescue StandardError
+  false
 end
 
-#
-# start our own redis when the tests start,
-# kill it when they end
-#
-
-
-class << Minitest
-  def exit(*args)
-    pid = `ps -e -o pid,command | grep [r]edis.*9736`.split(" ")[0]
-    puts "Killing test redis server..."
-    Process.kill("KILL", pid.to_i)
-    super
+unless redis_up?
+  conf = File.expand_path('redis-test.conf', __dir__)
+  if system('which redis-server > /dev/null 2>&1')
+    system("rm -f #{__dir__}/dump.rdb")
+    abort 'redis-server failed to start' unless system("redis-server #{conf}")
+    REDIS_PID = File.read(File.expand_path('redis-test.pid', __dir__)).to_i
+    sleep 0.2
+  else
+    abort <<~MSG
+      Redis not reachable at #{REDIS_URL}.
+      Start one, e.g.: docker run -d --name resque-status-redis -p 9736:6379 redis:7-alpine
+      Or set REDIS_URL.
+    MSG
   end
 end
 
-dir = File.expand_path("../", __FILE__)
-puts "Starting redis for testing at localhost:9736..."
-result = `rm -f #{dir}/dump.rdb && redis-server #{dir}/redis-test.conf`
-raise "Redis failed to start: #{result}" unless $?.success?
-Resque.redis = 'localhost:9736/1'
+Minitest.after_run do
+  next unless REDIS_PID && REDIS_PID > 0
+
+  Process.kill('TERM', REDIS_PID)
+rescue Errno::ESRCH
+  # already gone
+end
+
+# Resque 1.x rejects redis:// URLs (Redis.connect removed in redis-rb 4+).
+# Path segment is the Resque namespace (historical test isolation), not Redis DB.
+_uri = URI.parse(REDIS_URL)
+_ns = (_uri.path || '/1').delete('/')
+_ns = '1' if _ns.empty?
+Resque.redis = "#{_uri.host}:#{_uri.port || 6379}/#{_ns}"
 
 #### Fixtures
 
 class WorkingJob
-
   include Resque::Plugins::Status
 
   def perform
@@ -47,17 +61,14 @@ class WorkingJob
       at(num, total, "At #{num}")
     end
   end
-
 end
 
 class ErrorJob
-
   include Resque::Plugins::Status
 
   def perform
     raise "I'm a bad little job"
   end
-
 end
 
 class KillableJob
@@ -70,7 +81,6 @@ class KillableJob
       at(num, 100, "At #{num} of 100")
     end
   end
-
 end
 
 class BasicJob
