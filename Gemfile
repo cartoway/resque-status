@@ -1,12 +1,9 @@
+# frozen_string_literal: true
+
 source 'https://rubygems.org'
 
-gem 'resque', '~>1.19'
+gemspec
 
-group :test do
-  gem 'mocha', '~>0.9'
-  gem 'minitest', '~> 5.5'
-end
-
-group :development do
-  gem 'jeweler'
-end
+gem 'minitest'
+gem 'mocha'
+gem 'rake'

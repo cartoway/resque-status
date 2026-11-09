@@ -1,3 +1,5 @@
+require 'resque/plugins/status/version'
+
 module Resque
   module Plugins
 
@@ -28,8 +30,6 @@ module Resque
     # This job would iterate num times updating the status as it goes. At the end
     # we update the status telling anyone listening to this job that its complete.
     module Status
-      VERSION = '0.5.0'
-
       STATUS_QUEUED = 'queued'
       STATUS_WORKING = 'working'
       STATUS_COMPLETED = 'completed'
