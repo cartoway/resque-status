@@ -106,3 +106,15 @@ class NeverQueuedJob
     # will never get called
   end
 end
+
+class SlimStatusJob
+  include Resque::Plugins::Status
+
+  def self.status_options(options)
+    options.reject { |k, _| k.to_s == 'fat' }
+  end
+
+  def perform
+    # no-op
+  end
+end

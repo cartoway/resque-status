@@ -70,6 +70,22 @@ Resque::Plugins::Status::Hash.patch(uuid,
 
 Top-level keys are shallow-merged (`nil` clears a field). The `options` hash is deep-merged one level. Returns `nil` if the UUID is unknown. Persists via `set` (TTL / zset refresh included).
 
+### Keeping large options out of status
+
+By default every enqueue option is copied onto the status hash. Override `status_options` to keep large payloads (e.g. `services_vrps`) only on the Resque job args:
+
+```ruby
+class ExportJob
+  include Resque::Plugins::Status
+
+  def self.status_options(options)
+    options.reject { |k, _| k.to_s == 'services_vrps' }
+  end
+end
+```
+
+Full options still reach `#perform`. A side key (`status:uuid:enqueue_args`) keeps them for `dequeue` while the job is queued, then is removed when the worker starts (or on `Hash.remove`).
+
 ### Options convention
 
 Always read **string keys** inside `#perform` (`options['num']`, not `options[:num]`). Resque encodes arguments as JSON.

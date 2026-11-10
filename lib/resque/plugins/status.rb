@@ -71,6 +71,12 @@ module Resque
           self.to_s
         end
 
+        # Options persisted on the status hash (default: all). Override to omit large
+        # keys from status while still passing full options to the Resque worker.
+        def status_options(options)
+          options
+        end
+
         # Create is the primary method for adding jobs to the queue. This would be
         # called on the job class to create a job of that type. Any options passed are
         # passed to the Job instance as a hash of options. It returns the UUID of the
@@ -107,7 +113,8 @@ module Resque
         # rejected by a before_enqueue hook.
         def enqueue_to(queue, klass, options = {})
           uuid = Resque::Plugins::Status::Hash.generate_uuid
-          Resque::Plugins::Status::Hash.create uuid, :options => options
+          Resque::Plugins::Status::Hash.create uuid, :options => klass.status_options(options)
+          Resque::Plugins::Status::Hash.store_enqueue_args(uuid, options)
 
           if Resque.enqueue_to(queue, klass, uuid, options)
             uuid
@@ -119,11 +126,12 @@ module Resque
 
         # Removes a job of type <tt>klass<tt> from the queue.
         #
-        # The initially given options are retrieved from the status hash.
-        # (Resque needs the options to find the correct queue entry)
+        # Full enqueue args are preferred (status may only hold a slim options subset).
         def dequeue(klass, uuid)
-          status = Resque::Plugins::Status::Hash.get(uuid)
-          Resque.dequeue(klass, uuid, status.options)
+          args = Resque::Plugins::Status::Hash.fetch_enqueue_args(uuid)
+          args ||= Resque::Plugins::Status::Hash.get(uuid)&.options
+          Resque.dequeue(klass, uuid, args)
+          Resque::Plugins::Status::Hash.remove_enqueue_args(uuid)
         end
 
         # This is the method called by Resque::Worker when processing jobs. It
@@ -157,6 +165,8 @@ module Resque
       # If an error occurs within the job's work, it will set the status as failed and
       # re-raise the error.
       def safe_perform!
+        # Job is reserved from the queue; enqueue_args only needed for dequeue while queued.
+        Resque::Plugins::Status::Hash.remove_enqueue_args(uuid)
         set_status({'status' => STATUS_WORKING})
         perform
         if status && status.failed?
@@ -190,7 +200,8 @@ module Resque
       end
 
       def name
-        "#{self.class.name}(#{options.inspect unless options.empty?})"
+        opts = self.class.status_options(options)
+        "#{self.class.name}(#{opts.inspect unless opts.empty?})"
       end
 
       # Checks against the kill list if this specific job instance should be killed

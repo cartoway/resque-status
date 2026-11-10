@@ -100,6 +100,26 @@ module Resque
         def self.remove(uuid)
           redis.del(status_key(uuid))
           redis.zrem(set_key, uuid)
+          remove_enqueue_args(uuid)
+        end
+
+        def self.enqueue_args_key(uuid)
+          "status:#{uuid}:enqueue_args"
+        end
+
+        # Full options as passed to Resque.enqueue (for dequeue), may be larger than status options.
+        def self.store_enqueue_args(uuid, options)
+          redis.set(enqueue_args_key(uuid), encode(options))
+          redis.expire(enqueue_args_key(uuid), expire_in) if expire_in
+        end
+
+        def self.fetch_enqueue_args(uuid)
+          val = redis.get(enqueue_args_key(uuid))
+          val ? decode(val) : nil
+        end
+
+        def self.remove_enqueue_args(uuid)
+          redis.del(enqueue_args_key(uuid))
         end
 
         def self.count

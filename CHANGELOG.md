@@ -3,6 +3,7 @@
 ## Unreleased
 
 - Add `Resque::Plugins::Status::Hash.patch` to merge into an existing status (deep-merge `options`)
+- Add `status_options` hook to omit large keys from the status hash; store full enqueue args for `dequeue`
 
 ## 0.6.0
 

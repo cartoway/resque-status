@@ -130,6 +130,52 @@ class TestResquePluginsStatus < Minitest::Test
       end
     end
 
+    describe ".status_options" do
+      before do
+        @uuid = SlimStatusJob.create('keep' => 1, 'fat' => 'HUGE')
+        @payload = Resque.pop(:statused)
+      end
+
+      it "store slim options on the status hash" do
+        status = Resque::Plugins::Status::Hash.get(@uuid)
+        assert_equal 1, status.options['keep']
+        refute status.options.key?('fat')
+      end
+
+      it "still pass full options to the Resque worker payload" do
+        assert_equal({ 'keep' => 1, 'fat' => 'HUGE' }, @payload['args'].last)
+      end
+
+      it "dequeue using stored enqueue_args even when status is slim" do
+        uuid = SlimStatusJob.create('keep' => 1, 'fat' => 'HUGE')
+        assert_equal 1, Resque.size(:statused)
+        SlimStatusJob.dequeue(SlimStatusJob, uuid)
+        assert_equal 0, Resque.size(:statused)
+        assert_nil Resque::Plugins::Status::Hash.fetch_enqueue_args(uuid)
+      end
+
+      it "remove enqueue_args when the job starts performing" do
+        assert Resque::Plugins::Status::Hash.fetch_enqueue_args(@uuid)
+        SlimStatusJob.perform(*@payload['args'])
+        assert_nil Resque::Plugins::Status::Hash.fetch_enqueue_args(@uuid)
+      end
+
+      it "omit fat keys from status name on tick" do
+        job = SlimStatusJob.perform(@uuid, 'keep' => 1, 'fat' => 'HUGE')
+        refute_includes job.status.name, 'HUGE'
+        assert_includes job.status.name, 'keep'
+      end
+    end
+
+    describe "without status_options override" do
+      it "keep full options on the status hash" do
+        uuid = WorkingJob.create('num' => 100)
+        status = Resque::Plugins::Status::Hash.get(uuid)
+        assert_equal 100, status.options['num']
+        assert Resque::Plugins::Status::Hash.fetch_enqueue_args(uuid)
+      end
+    end
+
     describe ".perform" do
       let(:expectation) { }
 
