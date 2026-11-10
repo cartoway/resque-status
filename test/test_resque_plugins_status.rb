@@ -196,7 +196,8 @@ class TestResquePluginsStatus < Minitest::Test
 
       it "set the status" do
         assert @performed.status.is_a?(Resque::Plugins::Status::Hash)
-        assert_equal 'WorkingJob({"num"=>100})', @performed.status.name
+        # Ruby 3.4+ Hash#inspect adds spaces around =>
+        assert_match(/\AWorkingJob\(\{"num"\s*=>\s*100\}\)\z/, @performed.status.name)
       end
 
       describe "before" do
@@ -222,7 +223,8 @@ class TestResquePluginsStatus < Minitest::Test
 
       it "set the status" do
         assert @performed.status.is_a?(Resque::Plugins::Status::Hash)
-        assert_equal 'FailureJob({"num"=>100})', @performed.status.name
+        # Ruby 3.4+ Hash#inspect adds spaces around =>
+        assert_match(/\AFailureJob\(\{"num"\s*=>\s*100\}\)\z/, @performed.status.name)
       end
 
       it "be failed" do
