@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add `Resque::Plugins::Status::Hash.patch` to merge into an existing status (deep-merge `options`)
+
 ## 0.6.0
 
 Hard fork of `quirkey/resque-status` for Cartoway.

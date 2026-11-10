@@ -57,6 +57,19 @@ Resque::Plugins::Status::Hash.expire_in = 3600 # seconds
 
 Status keys get a Redis TTL, and the `_statuses` index score is refreshed on each `#set` so long-running jobs are not pruned while still updating.
 
+### Patching a status
+
+`Hash.set` rebuilds a status from scratch. To merge into an existing Redis status (e.g. drop a large option after the worker loaded it):
+
+```ruby
+Resque::Plugins::Status::Hash.patch(uuid,
+  'name' => nil,
+  'options' => { 'services_vrps' => nil }
+)
+```
+
+Top-level keys are shallow-merged (`nil` clears a field). The `options` hash is deep-merged one level. Returns `nil` if the UUID is unknown. Persists via `set` (TTL / zset refresh included).
+
 ### Options convention
 
 Always read **string keys** inside `#perform` (`options['num']`, not `options[:num]`). Resque encodes arguments as JSON.

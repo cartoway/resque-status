@@ -50,6 +50,23 @@ module Resque
           val
         end
 
+        # Merge +attrs+ into the existing Redis status and persist via set.
+        # Top-level keys use Hash#merge (nil clears a field). The +options+ key is
+        # deep-merged one level so a single option can be cleared without rewriting all.
+        # Returns the new Status::Hash, or nil if +uuid+ is unknown.
+        def self.patch(uuid, attrs = {})
+          current = get(uuid)
+          return nil unless current
+
+          attrs = attrs.transform_keys(&:to_s)
+          if attrs.key?('options') && attrs['options']
+            opts = attrs['options'].transform_keys(&:to_s)
+            attrs = attrs.merge('options' => (current['options'] || {}).merge(opts))
+          end
+
+          set(uuid, current.merge(attrs))
+        end
+
         # clear statuses from redis passing an optional range. See `statuses` for info
         # about ranges
         def self.clear(range_start = nil, range_end = nil)

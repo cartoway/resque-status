@@ -64,6 +64,42 @@ class TestResquePluginsStatusHash < Minitest::Test
 
     end
 
+    describe ".patch" do
+      it "merge attrs into the existing status and deep-merge options" do
+        uuid = Resque::Plugins::Status::Hash.create(
+          Resque::Plugins::Status::Hash.generate_uuid,
+          'message' => 'old',
+          'options' => { 'a' => 1, 'b' => 2 }
+        )
+
+        result = Resque::Plugins::Status::Hash.patch(uuid, 'message' => 'x', 'options' => { 'b' => nil })
+
+        assert result.is_a?(Resque::Plugins::Status::Hash)
+        status = Resque::Plugins::Status::Hash.get(uuid)
+        assert_equal 'x', status.message
+        assert_equal 1, status.options['a']
+        assert_nil status.options['b']
+      end
+
+      it "return nil for an unknown uuid" do
+        assert_nil Resque::Plugins::Status::Hash.patch('missing-uuid', 'message' => 'nope')
+      end
+
+      it "refresh expire_in TTL like set" do
+        Resque::Plugins::Status::Hash.expire_in = 2
+        uuid = Resque::Plugins::Status::Hash.create(
+          Resque::Plugins::Status::Hash.generate_uuid,
+          'message' => 'running'
+        )
+        sleep 1
+        Resque::Plugins::Status::Hash.patch(uuid, 'message' => 'still running')
+        sleep 1
+        Resque::Plugins::Status::Hash.create(Resque::Plugins::Status::Hash.generate_uuid)
+        assert_includes Resque::Plugins::Status::Hash.status_ids, uuid
+        assert_equal 'still running', Resque::Plugins::Status::Hash.get(uuid).message
+      end
+    end
+
     describe ".create" do
       it "add an item to a key set" do
         before = Resque::Plugins::Status::Hash.status_ids.length
