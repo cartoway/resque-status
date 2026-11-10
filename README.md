@@ -59,32 +59,55 @@ Status keys get a Redis TTL, and the `_statuses` index score is refreshed on eac
 
 ### Patching a status
 
-`Hash.set` rebuilds a status from scratch. To merge into an existing Redis status (e.g. drop a large option after the worker loaded it):
+`Hash.set` rebuilds a status from scratch (it does not read Redis first). Use `Hash.patch` when you need a **partial update** of an existing status:
+
+- clear a field after the worker no longer needs it in the public status
+- update `message` / metadata without rewriting the whole hash
+- clear one key inside `options` without replacing the whole `options` hash
 
 ```ruby
+# Clear one option key, keep the others; also clear the display name
 Resque::Plugins::Status::Hash.patch(uuid,
   'name' => nil,
-  'options' => { 'services_vrps' => nil }
+  'options' => { 'payload' => nil }
 )
+
+# Update only the message
+Resque::Plugins::Status::Hash.patch(uuid, 'message' => 'phase 2')
 ```
 
 Top-level keys are shallow-merged (`nil` clears a field). The `options` hash is deep-merged one level. Returns `nil` if the UUID is unknown. Persists via `set` (TTL / zset refresh included).
 
 ### Keeping large options out of status
 
-By default every enqueue option is copied onto the status hash. Override `status_options` to keep large payloads (e.g. `services_vrps`) only on the Resque job args:
+**Use case:** you enqueue a job with a large argument (file contents, serialized object, big JSON) that the worker needs in `#perform`, but you do **not** want that blob duplicated on the status hash used by `Hash.get` / UIs / listings.
+
+By default every enqueue option is copied onto the status. Override `status_options` to store only the small metadata on the status:
 
 ```ruby
 class ExportJob
   include Resque::Plugins::Status
 
   def self.status_options(options)
-    options.reject { |k, _| k.to_s == 'services_vrps' }
+    options.reject { |k, _| k.to_s == 'payload' }
+  end
+
+  def perform
+    data = options['payload'] # still available on the worker
+    # ...
   end
 end
+
+ExportJob.create('user_id' => 42, 'payload' => huge_string)
+# status.options => { 'user_id' => 42 }  — no payload
+# worker options => { 'user_id' => 42, 'payload' => huge_string }
 ```
 
-Full options still reach `#perform`. A side key (`status:uuid:enqueue_args`) keeps them for `dequeue` while the job is queued, then is removed when the worker starts (or on `Hash.remove`).
+`#name` (written on each `#tick` / `#at`) also uses `status_options`, so the large key is not re-injected into the status while the job runs.
+
+A side key (`status:uuid:enqueue_args`) keeps the full options for `dequeue` while the job is still queued, then is removed when the worker starts (or on `Hash.remove`).
+
+Prefer `status_options` at enqueue time over enqueueing the blob into the status and `patch`-ing it away later.
 
 ### Options convention
 
